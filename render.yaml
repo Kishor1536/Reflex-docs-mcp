@@ -1,0 +1,16 @@
+# Render build and start commands
+# Build: pip install -e . && python -m src.reflex_docs_mcp.indexer --skip-clone || python -m src.reflex_docs_mcp.indexer
+# Start: uvicorn api:app --host 0.0.0.0 --port $PORT
+
+# For render.yaml deployment
+services:
+  - type: web
+    name: reflex-docs-mcp
+    runtime: python
+    buildCommand: |
+      pip install -e .
+      python -m src.reflex_docs_mcp.indexer
+    startCommand: uvicorn api:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.11"

@@ -1,0 +1,214 @@
+"""FastMCP server exposing Reflex documentation tools."""
+
+import logging
+from pathlib import Path
+
+from fastmcp import FastMCP
+
+from . import database
+from .models import DocResult, DocPage, ComponentInfo
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s"
+)
+logger = logging.getLogger(__name__)
+
+# Create the MCP server
+mcp = FastMCP(
+    "Reflex Docs MCP Server",
+    instructions="""
+    This server provides structured access to Reflex documentation.
+    Use these tools to search and retrieve accurate, up-to-date information
+    about Reflex components, state management, and best practices.
+    
+    Available tools:
+    - search_docs: Search the documentation using keywords
+    - get_doc: Get a full documentation page by its slug
+    - list_components: List all Reflex components
+    - get_component: Get details about a specific component
+    """
+)
+
+
+@mcp.tool
+def search_docs(query: str, limit: int = 10) -> list[dict]:
+    """Search Reflex documentation by keyword or natural language query.
+    
+    Args:
+        query: Search query (e.g., "rx.foreach", "state management", "styling")
+        limit: Maximum number of results to return (default: 10)
+    
+    Returns:
+        List of matching documentation sections with slug, title, score, snippet, and URL
+    
+    Example:
+        search_docs("rx.foreach")
+        search_docs("how to style components")
+    """
+    logger.info(f"Searching docs: {query}")
+    
+    try:
+        results = database.search_sections(query, limit=limit)
+        return [result.model_dump() for result in results]
+    except Exception as e:
+        logger.error(f"Search error: {e}")
+        return []
+
+
+@mcp.tool
+def get_doc(slug: str) -> dict | None:
+    """Retrieve a full documentation page by its slug.
+    
+    Args:
+        slug: Document slug (e.g., "library/layout/box", "components/rendering_iterables")
+    
+    Returns:
+        Full document with title, URL, and all sections with markdown content
+    
+    Example:
+        get_doc("library/layout/box")
+        get_doc("state/overview")
+    """
+    logger.info(f"Getting doc: {slug}")
+    
+    try:
+        page = database.get_page_sections(slug)
+        if page:
+            return page.model_dump()
+        return None
+    except Exception as e:
+        logger.error(f"Get doc error: {e}")
+        return None
+
+
+@mcp.tool
+def list_components(category: str | None = None) -> list[dict]:
+    """List all documented Reflex components.
+    
+    Args:
+        category: Optional category filter (e.g., "layout", "forms", "data-display")
+    
+    Returns:
+        List of components with name, category, description, and documentation URL
+    
+    Example:
+        list_components()
+        list_components("layout")
+        list_components("forms")
+    """
+    logger.info(f"Listing components (category: {category})")
+    
+    try:
+        components = database.list_all_components(category=category)
+        return [comp.model_dump() for comp in components]
+    except Exception as e:
+        logger.error(f"List components error: {e}")
+        return []
+
+
+@mcp.tool
+def get_component(name: str) -> dict | None:
+    """Get detailed information about a specific Reflex component.
+    
+    Args:
+        name: Component name (e.g., "rx.box", "rx.button", "box", "button")
+              The "rx." prefix is optional.
+    
+    Returns:
+        Component info with name, category, description, and documentation URL
+    
+    Example:
+        get_component("rx.box")
+        get_component("button")
+    """
+    logger.info(f"Getting component: {name}")
+    
+    try:
+        component = database.get_component_by_name(name)
+        if component:
+            return component.model_dump()
+        return None
+    except Exception as e:
+        logger.error(f"Get component error: {e}")
+        return None
+
+
+@mcp.tool
+def get_stats() -> dict:
+    """Get statistics about the indexed documentation.
+    
+    Returns:
+        Dictionary with counts of pages, sections, and components
+    """
+    try:
+        return database.get_stats()
+    except Exception as e:
+        logger.error(f"Get stats error: {e}")
+        return {"error": str(e)}
+
+
+def check_database() -> bool:
+    """Check if the database exists and has data."""
+    db_path = database.get_db_path()
+    if not db_path.exists():
+        return False
+    
+    try:
+        stats = database.get_stats()
+        return stats.get("sections", 0) > 0
+    except Exception:
+        return False
+
+
+def main():
+    """Main entry point for the MCP server."""
+    import argparse
+    
+    parser = argparse.ArgumentParser(
+        description="Run the Reflex Docs MCP Server"
+    )
+    parser.add_argument(
+        "--transport",
+        choices=["stdio", "sse"],
+        default="stdio",
+        help="Transport protocol (default: stdio)"
+    )
+    parser.add_argument(
+        "--host",
+        default="127.0.0.1",
+        help="Host for SSE transport (default: 127.0.0.1)"
+    )
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=8000,
+        help="Port for SSE transport (default: 8000)"
+    )
+    
+    args = parser.parse_args()
+    
+    # Check if database is ready
+    if not check_database():
+        print("=" * 60)
+        print("WARNING: Documentation index not found or empty!")
+        print("Run the indexer first:")
+        print("  python -m reflex_docs_mcp.indexer")
+        print("=" * 60)
+        print()
+    
+    # Initialize database (creates tables if needed)
+    database.init_db()
+    
+    # Run the server
+    logger.info(f"Starting Reflex Docs MCP Server ({args.transport})")
+    
+    if args.transport == "stdio":
+        mcp.run()
+    else:
+        mcp.run(transport="sse", host=args.host, port=args.port)
+
+
+if __name__ == "__main__":
+    main()
