@@ -4,6 +4,11 @@
 
 This Project is an **Model Context Protocol (MCP) Server** designed to ground AI agents in the actual, latest documentation of the [Reflex](https://reflex.dev/) web framework. 
 
+### What is Reflex?
+Reflex is a pure-Python web framework for building full-stack web applications without writing JavaScript.
+It lets developers define UI, state, and backend logic entirely in Python, which Reflex compiles into a modern, reactive web app.
+
+
 ### Why this exists?
 LLMs often hallucinate parameters or use outdated syntax when writing Reflex code. This server solves that by exposing the valid, up-to-date documentation as **tools** that the LLM can call on-demand.
 
